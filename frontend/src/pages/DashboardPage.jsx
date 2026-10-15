@@ -6,7 +6,10 @@ import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, ChevronRight, Dow
 import Header from '../components/Header'
 import LoadingExperience from '../components/LoadingExperience'
 import ErrorState from '../components/ErrorState'
-import { analyzeRepository } from '../services/api'
+import {
+  analyzeRepository,
+  generateAiInsights,
+} from '../services/api'
 import { formatDate, formatNumber } from '../utils/repository'
 import { exportReport } from '../utils/report'
 
@@ -27,6 +30,9 @@ export default function DashboardPage() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [aiInsights, setAiInsights] = useState(null)
+const [aiInsightsError, setAiInsightsError] = useState('')
+const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
   const load = useCallback(async () => {
     setLoading(true); setError(''); setData(null)
     const start = Date.now()
@@ -34,6 +40,22 @@ export default function DashboardPage() {
     catch (requestError) { setError(requestError.message); }
     finally { setLoading(false) }
   }, [repositoryUrl])
+  
+const handleGenerateAiInsights = async () => {
+  setAiInsightsLoading(true)
+  setAiInsightsError('')
+  setAiInsights(null)
+
+  try {
+    const result = await generateAiInsights(repositoryUrl)
+    setAiInsights(result)
+  } catch (requestError) {
+    setAiInsightsError(requestError.message)
+  } finally {
+    setAiInsightsLoading(false)
+  }
+}
+
   useEffect(() => { load() }, [load])
   if (loading) return <><Header dashboard /><LoadingExperience /></>
   if (error) return <><Header dashboard /><ErrorState message={error} onRetry={load} /></>

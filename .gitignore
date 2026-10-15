@@ -33,3 +33,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+# Local credentials and unrelated copied files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+**/credentials.json
+Java-Projects-Collections/
