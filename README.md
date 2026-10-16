@@ -43,7 +43,7 @@ See the detailed [architecture documentation](docs/architecture.md).
 
 | Area | Technology |
 | --- | --- |
-| Backend | Java 21, Spring Boot, Spring Web, Validation, Jackson, Lombok, Maven Wrapper |
+| Backend | Java 25, Spring Boot, Spring Web, Validation, Jackson, Lombok, Maven Wrapper |
 | Frontend | React, Vite, Tailwind CSS, Axios, React Router, Chart.js, Lucide |
 | Report export | jsPDF, generated in the browser |
 | Deployment | Render (backend), Vercel (frontend) |
@@ -66,7 +66,7 @@ For a complete map, read [docs/folder-structure.md](docs/folder-structure.md).
 ## Prerequisites
 
 - Git 2.40+
-- JDK 21+ (the app targets Java 21)
+- JDK 25+ (the app targets Java 25)
 - Node.js 20+ and npm 10+
 - A modern browser
 - Optional but recommended: a GitHub personal access token with no extra scopes for higher public-API quota
@@ -200,7 +200,7 @@ Complete request, response, status-code, and error documentation is in [docs/api
 
 1. Create a Render account and connect the GitHub repository.
 2. Create a Web Service (or create a Blueprint from `render.yaml`).
-3. Select `backend` as the root directory and Java 21 as the runtime.
+3. Select `backend` as the root directory and Java 25 as the runtime.
 4. Use build command `./mvnw clean package -DskipTests`.
 5. Use start command `java -Dserver.port=$PORT -jar target/reporadar-api-1.0.0.jar`.
 6. Set `GITHUB_API_URL=https://api.github.com`, optionally set `GITHUB_TOKEN`, and set `CORS_ALLOWED_ORIGINS` to your exact Vercel URL.
@@ -241,7 +241,7 @@ Then open the frontend URL shown in the terminal (usually `http://localhost:5173
 | GitHub rate limit message | Wait for the reset or configure a server-side `GITHUB_TOKEN`. |
 | Repository not found | Confirm the repository is public and the URL is exactly `https://github.com/owner/repository`. |
 | Render health check fails | Verify `PORT` is not overridden and the check path is `/health`. |
-| Java build uses wrong release | Install/select JDK 21+ and check `java -version`. |
+| Java build uses wrong release | Install/select JDK 25+ and check `java -version`. |
 
 ## Future Roadmap
 

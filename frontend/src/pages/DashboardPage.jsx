@@ -2,7 +2,7 @@ import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js'
 import { Doughnut } from 'react-chartjs-2'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, ChevronRight, Download, ExternalLink, FolderTree, GitBranch, GitFork, GitPullRequest, Info, Lightbulb, PackageCheck, Star, Tag, Users, Eye, XCircle } from 'lucide-react'
+import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, ChevronRight, Download, ExternalLink, FolderTree, GitBranch, GitFork, GitPullRequest, Info, Lightbulb, PackageCheck, Star, Tag, Users, Eye, XCircle, Sparkles, LoaderCircle } from 'lucide-react'
 import Header from '../components/Header'
 import LoadingExperience from '../components/LoadingExperience'
 import ErrorState from '../components/ErrorState'
@@ -19,6 +19,8 @@ const scoreTone = (score) => score >= 90 ? 'text-green-700 bg-green-600' : score
 const metrics = [
   ['Stars', 'stars', Star], ['Forks', 'forks', GitFork], ['Issues', 'issues', Info], ['Watchers', 'watchers', Eye], ['Contributors', 'contributors', Users], ['Repository size', 'sizeKb', PackageCheck], ['Open pull requests', 'openPullRequests', GitPullRequest], ['Latest release', 'latestRelease', Tag], ['Latest commit', 'latestCommit', GitBranch],
 ]
+const AI_INSIGHTS_UNAVAILABLE_MESSAGE =
+  'AI service temporarily unavailable. The AI service may be experiencing heavy traffic. Please try again after some time.'
 
 function Section({ icon: Icon, eyebrow, title, children, action }) {
   return <section className="mt-8" aria-labelledby={title.replaceAll(' ', '-').toLowerCase()}><div className="mb-4 flex items-end justify-between gap-4"><div><p className="eyebrow">{eyebrow}</p><h2 id={title.replaceAll(' ', '-').toLowerCase()} className="section-title mt-1">{title}</h2></div>{action}</div>{children}</section>
@@ -31,8 +33,8 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [aiInsights, setAiInsights] = useState(null)
-const [aiInsightsError, setAiInsightsError] = useState('')
-const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
+  const [aiInsightsError, setAiInsightsError] = useState('')
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
   const load = useCallback(async () => {
     setLoading(true); setError(''); setData(null)
     const start = Date.now()
@@ -41,27 +43,29 @@ const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
     finally { setLoading(false) }
   }, [repositoryUrl])
   
-const handleGenerateAiInsights = async () => {
-  setAiInsightsLoading(true)
-  setAiInsightsError('')
-  setAiInsights(null)
-
-  try {
-    const result = await generateAiInsights(repositoryUrl)
-    setAiInsights(result)
-  } catch (requestError) {
-    setAiInsightsError(requestError.message)
-  } finally {
-    setAiInsightsLoading(false)
+  const handleGenerateAiInsights = async () => {
+    if (aiInsightsLoading) return
+    setAiInsightsLoading(true)
+    setAiInsightsError('')
+    setAiInsights(null)
+    try {
+      const result = await generateAiInsights(repositoryUrl)
+      setAiInsights(result)
+    } catch {
+      setAiInsightsError(AI_INSIGHTS_UNAVAILABLE_MESSAGE)
+    } finally {
+      setAiInsightsLoading(false)
+    }
   }
-}
 
+  useEffect(() => { setAiInsights(null); setAiInsightsError(''); setAiInsightsLoading(false) }, [repositoryUrl])
   useEffect(() => { load() }, [load])
   if (loading) return <><Header dashboard /><LoadingExperience /></>
   if (error) return <><Header dashboard /><ErrorState message={error} onRetry={load} /></>
   return <><Header dashboard /><main className="mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-10">
     <RepositoryHeader repository={data.repository} />
     <ExecutiveSummary data={data} />
+    <AiInsights data={aiInsights} error={aiInsightsError} loading={aiInsightsLoading} repository={data.repository.fullName} onGenerate={handleGenerateAiInsights} />
     <HealthOverview health={data.health} />
     <Section eyebrow="At a glance" title="Quick metrics"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{metrics.map(([label, field, Icon]) => <MetricCard key={label} label={label} value={data.metrics[field]} icon={Icon} />)}</div></Section>
     <div className="grid gap-8 xl:grid-cols-5"><div className="xl:col-span-3"><Languages languages={data.languages} /></div><div className="xl:col-span-2"><Activity activity={data.activity} /></div></div>
@@ -82,6 +86,33 @@ function ExecutiveSummary({ data }) {
     <article className="surface p-5"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300"><AlertTriangle size={17} /></span><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Major issues</p></div>{issues.length ? <ul className="mt-4 space-y-2">{issues.slice(0, 3).map((issue) => <li key={typeof issue === 'string' ? issue : issue.title} className="flex gap-2 text-sm font-medium text-slate-700 dark:text-slate-200"><ChevronRight size={15} className="mt-0.5 shrink-0 text-amber-600" />{typeof issue === 'string' ? issue : issue.title}</li>)}</ul> : <p className="mt-4 text-sm font-medium text-teal">No major issues found.</p>}</article>
     <article className="surface p-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Recommended next step</p><h3 className="mt-3 font-bold text-slate-900 dark:text-white">{nextAction?.title || 'Keep the quality bar high'}</h3><p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{nextAction?.description || 'Maintain the documentation, release cadence, and automated checks already present.'}</p><a href="#suggestions" className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-teal hover:underline">View recommendations <ChevronRight size={15} /></a></article>
   </div></section>
+}
+
+function AiInsights({ data, error, loading, repository, onGenerate }) {
+  const hasCurrentInsights = data?.repositoryName?.toLowerCase?.() === repository?.toLowerCase?.()
+  const insights = hasCurrentInsights && Array.isArray(data.insights) ? data.insights : []
+  const nextSteps = hasCurrentInsights && Array.isArray(data.recommendedNextSteps) ? data.recommendedNextSteps : []
+  const action = <button type="button" onClick={onGenerate} disabled={loading} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60">
+    {loading ? <LoaderCircle size={16} className="animate-spin" /> : <Sparkles size={16} />}{loading ? 'Generating insights…' : hasCurrentInsights ? 'Regenerate insights' : 'Generate AI Insights'}
+  </button>
+  return <Section eyebrow="Evidence-based AI review" title="AI repository insights" action={action}>
+    <div className="surface p-6 sm:p-8">
+      {loading && <div className="flex items-center gap-3 rounded-lg bg-teal/5 p-4 text-sm text-slate-700 dark:bg-teal/10 dark:text-slate-200"><LoaderCircle size={18} className="animate-spin text-teal" />Generating a separate assessment from the current repository analysis. The dashboard will remain available.</div>}
+      {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"><p>{error}</p><button type="button" onClick={onGenerate} disabled={loading} className="mt-3 font-bold underline underline-offset-2 disabled:opacity-60">Try again</button></div>}
+      {!loading && !error && !hasCurrentInsights && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="muted">Generate a concise assessment and prioritized recommendations from the repository metadata already analyzed above.</p><p className="text-xs text-slate-500">AI output is evidence-based, but it cannot replace a source-code or security review.</p></div>}
+      {hasCurrentInsights && <div className="space-y-7"><div><p className="text-sm font-bold text-slate-900 dark:text-white">Overall assessment</p><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 dark:text-slate-300">{typeof data.overallAssessment === 'string' && data.overallAssessment.trim() ? data.overallAssessment : 'Assessment unavailable.'}</p></div>
+        <div className="grid gap-4 lg:grid-cols-2">{insights.map((insight, index) => <AiInsightCard key={`${insight?.title || 'insight'}-${index}`} insight={insight} />)}</div>
+        {!insights.length && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-800/40 dark:text-slate-300">The AI response did not include any validated findings. Review the limitations below or generate again.</p>}
+        <div className="grid gap-6 border-t border-slate-100 pt-6 dark:border-slate-800 lg:grid-cols-2"><InsightList title="Recommended next steps" items={nextSteps.filter((item) => typeof item === 'string' && item.trim())} /><div><h3 className="text-sm font-bold text-slate-900 dark:text-white">Model limitations</h3><p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{typeof data.limitations === 'string' && data.limitations.trim() ? data.limitations : 'Limitations were not provided.'}</p></div></div>
+      </div>}
+    </div>
+  </Section>
+}
+
+function AiInsightCard({ insight }) {
+  const priority = ['High', 'Medium', 'Low'].includes(insight?.priority) ? insight.priority : 'Low'
+  const evidence = Array.isArray(insight?.evidence) ? insight.evidence.filter((item) => typeof item === 'string' && item.trim()) : []
+  return <article className="rounded-xl border border-slate-200 p-5 dark:border-slate-700"><div className="flex items-start justify-between gap-4"><h3 className="font-bold text-slate-900 dark:text-white">{typeof insight?.title === 'string' && insight.title.trim() ? insight.title : 'Repository finding'}</h3><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${priority === 'High' ? 'bg-red-50 text-red-700' : priority === 'Medium' ? 'bg-amber-50 text-amber-800' : 'bg-teal/10 text-teal'}`}>{priority}</span></div><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{typeof insight?.explanation === 'string' ? insight.explanation : ''}</p>{evidence.length > 0 && <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Evidence</p><ul className="mt-2 space-y-1">{evidence.map((item, index) => <li key={`${item}-${index}`} className="text-xs leading-5 text-slate-600 dark:text-slate-300">• {item}</li>)}</ul></div>}<p className="mt-4 text-sm leading-6 text-slate-700 dark:text-slate-200"><b>Recommendation:</b> {typeof insight?.recommendation === 'string' ? insight.recommendation : 'No recommendation provided.'}</p></article>
 }
 
 function RepositoryHeader({ repository }) {

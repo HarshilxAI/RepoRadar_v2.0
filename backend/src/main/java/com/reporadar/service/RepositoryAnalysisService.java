@@ -22,17 +22,23 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class RepositoryAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(RepositoryAnalysisService.class);
     private static final List<String> LANGUAGE_COLORS = List.of("#f97360", "#0f766e", "#0284c7", "#d97706", "#7c3aed", "#16a34a", "#db2777");
+    private static final Duration AI_CACHE_TTL = Duration.ofMinutes(2);
     private final RepositoryUrlParser urlParser;
     private final GithubClient githubClient;
     private final ReadmeAnalysisService readmeAnalysisService;
     private final TechnologyDetectionService technologyDetectionService;
     private final HealthScoreService healthScoreService;
     private final SuggestionService suggestionService;
+    private final Map<String, CachedAnalysis> recentAnalyses = new ConcurrentHashMap<>();
 
     public RepositoryAnalysisService(RepositoryUrlParser urlParser, GithubClient githubClient, ReadmeAnalysisService readmeAnalysisService,
                                      TechnologyDetectionService technologyDetectionService, HealthScoreService healthScoreService,
@@ -51,15 +57,34 @@ public class RepositoryAnalysisService {
         log.info("Analyzing public repository {}", reference.fullName());
         JsonNode repository = githubClient.repository(reference);
         if (repository.path("private").asBoolean(false)) throw new ApiException(HttpStatus.FORBIDDEN, "This repository is private. RepoRadar can analyze public repositories only.");
-        JsonNode languages = githubClient.languages(reference);
-        String readme = githubClient.readme(reference).map(this::decodeReadme).orElse("");
-        JsonNode releases = githubClient.releases(reference);
-        JsonNode contributors = githubClient.contributors(reference);
-        JsonNode branches = githubClient.branches(reference);
-        JsonNode pulls = githubClient.pulls(reference);
-        JsonNode commits = githubClient.commits(reference);
-        List<String> files = githubClient.tree(reference, GithubJson.text(repository, "default_branch", "main"))
-                .map(this::extractFiles).orElseGet(List::of);
+        // These GitHub endpoints do not depend on each other. Fetching them serially made a
+        // first analysis vulnerable to accumulating normal upstream latency past the old 30s
+        // browser request limit. Keep the same bounded client timeouts, but overlap the calls.
+        CompletableFuture<JsonNode> languagesFuture = supplyAsync(() -> githubClient.languages(reference));
+        CompletableFuture<Optional<JsonNode>> readmeFuture = supplyAsync(() -> githubClient.readme(reference));
+        CompletableFuture<JsonNode> releasesFuture = supplyAsync(() -> githubClient.releases(reference));
+        CompletableFuture<JsonNode> contributorsFuture = supplyAsync(() -> githubClient.contributors(reference));
+        CompletableFuture<JsonNode> branchesFuture = supplyAsync(() -> githubClient.branches(reference));
+        CompletableFuture<JsonNode> pullsFuture = supplyAsync(() -> githubClient.pulls(reference));
+        CompletableFuture<JsonNode> commitsFuture = supplyAsync(() -> githubClient.commits(reference));
+        CompletableFuture<Optional<JsonNode>> treeFuture = supplyAsync(() -> githubClient.tree(reference,
+                GithubJson.text(repository, "default_branch", "main")));
+
+        try {
+            CompletableFuture.allOf(languagesFuture, readmeFuture, releasesFuture, contributorsFuture,
+                    branchesFuture, pullsFuture, commitsFuture, treeFuture).join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof ApiException apiException) throw apiException;
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "GitHub could not complete the request. Please try again shortly.");
+        }
+        JsonNode languages = languagesFuture.join();
+        String readme = readmeFuture.join().map(this::decodeReadme).orElse("");
+        JsonNode releases = releasesFuture.join();
+        JsonNode contributors = contributorsFuture.join();
+        JsonNode branches = branchesFuture.join();
+        JsonNode pulls = pullsFuture.join();
+        JsonNode commits = commitsFuture.join();
+        List<String> files = treeFuture.join().map(this::extractFiles).orElseGet(List::of);
 
         Instant updatedAt = GithubJson.instant(repository, "updated_at");
         String description = GithubJson.text(repository, "description", "");
@@ -91,9 +116,26 @@ public class RepositoryAnalysisService {
         DashboardDto.DeveloperSnapshotDto snapshot = snapshot(health, readmeAnalysis, structure, activity, suggestions);
         DashboardDto result = new DashboardDto(repositoryDto, health, metrics, languageDtos(languages), readmeAnalysis, technologies, structure,
                 activity, community, snapshot, suggestions, Instant.now());
+        recentAnalyses.put(reference.fullName().toLowerCase(Locale.ROOT), new CachedAnalysis(result, Instant.now()));
         log.info("Completed analysis for {} in {} ms", reference.fullName(), (System.nanoTime() - started) / 1_000_000);
         return result;
     }
+
+    /** Reuses only a very recent successful dashboard result for the follow-up AI request. */
+    public DashboardDto analyzeForAi(String repositoryUrl) {
+        RepositoryReference reference = urlParser.parse(repositoryUrl);
+        CachedAnalysis cached = recentAnalyses.get(reference.fullName().toLowerCase(Locale.ROOT));
+        if (cached != null && Duration.between(cached.createdAt(), Instant.now()).compareTo(AI_CACHE_TTL) <= 0) {
+            return cached.dashboard();
+        }
+        return analyze(repositoryUrl);
+    }
+
+    private <T> CompletableFuture<T> supplyAsync(java.util.function.Supplier<T> supplier) {
+        return CompletableFuture.supplyAsync(supplier);
+    }
+
+    private record CachedAnalysis(DashboardDto dashboard, Instant createdAt) { }
 
     private String decodeReadme(JsonNode readme) {
         String content = GithubJson.text(readme, "content", "").replaceAll("\\s", "");

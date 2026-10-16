@@ -8,7 +8,6 @@ import com.reporadar.service.GemmaInsightsService;
 import com.reporadar.service.RepositoryAnalysisService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api")
@@ -28,7 +27,7 @@ public class AiInsightsController {
     public ApiResponse<AiInsightsDto> generateInsights(
             @RequestParam String repositoryUrl) {
         try {
-            DashboardDto dashboard = analysisService.analyze(repositoryUrl);
+            DashboardDto dashboard = analysisService.analyzeForAi(repositoryUrl);
             AiInsightsDto insights =
                     gemmaInsightsService.generateInsights(dashboard);
 
@@ -36,13 +35,10 @@ public class AiInsightsController {
                     "AI repository insights generated successfully.",
                     insights);
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+            throw new com.reporadar.exception.ApiException(HttpStatus.BAD_REQUEST, ex.getMessage());
         } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Unable to generate AI insights. Check the AI service configuration and availability.",
-                    ex);
+            throw new com.reporadar.exception.ApiException(
+                    HttpStatus.BAD_GATEWAY, "Unable to generate AI insights. Please try again shortly.");
         }
     }
 }

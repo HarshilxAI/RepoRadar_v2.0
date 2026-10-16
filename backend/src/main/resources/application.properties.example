@@ -8,3 +8,10 @@ GITHUB_READ_TIMEOUT_SECONDS=15
 # Comma-separated browser origins. Wildcards are safe for local development only.
 # In production, set exact origins such as https://your-app.vercel.app
 CORS_ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*
+
+# OpenRouter is used only by the backend. Do not add this key to frontend .env files.
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=nvidia/nemotron-3.5-lightning:free
+OPENROUTER_CONNECT_TIMEOUT_SECONDS=8
+OPENROUTER_READ_TIMEOUT_SECONDS=35
+OPENROUTER_MAX_OUTPUT_TOKENS=1200
